@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AquaConvert — конвертер файлов</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    font-family:'Segoe UI',system-ui,-apple-system,'Helvetica Neue',Arial,sans-serif;
+    color:#08324f;
+    min-height:100vh;
+    background:linear-gradient(180deg,#eef9ff 0%,#cfeaff 30%,#9ed7f7 65%,#63b8e8 100%);
+    overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ===== 3D фон ===== */
+  #bg{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0}
+  .glow{
+    position:fixed;top:-30vh;right:-15vw;width:80vw;height:80vw;border-radius:50%;
+    background:radial-gradient(circle,rgba(255,255,255,.75),rgba(255,255,255,0) 62%);
+    pointer-events:none;z-index:1;
+    animation:pulse 9s ease-in-out infinite;
+  }
+  @keyframes pulse{
+    0%,100%{opacity:.5;transform:scale(1)}
+    50%{opacity:.9;transform:scale(1.08)}
+  }
+
+  /* ===== Разметка ===== */
+  .wrap{
+    position:relative;z-index:2;min-height:100vh;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:48px 20px;gap:24px;
+  }
+
+  .head{text-align:center;animation:fadeUp .8s cubic-bezier(.22,1,.36,1) both}
+  .head h1{
+    font-size:clamp(30px,5vw,46px);font-weight:800;letter-spacing:-1px;
+    color:#0a4f7d;text-shadow:0 4px 24px rgba(255,255,255,.85);
+  }
+  .head h1 span{
+    background:linear-gradient(90deg,#1b8fd4,#59c6f7);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .head p{
+    margin-top:8px;font-size:15px;color:#3d7ba3;font-weight:500;
+  }
+
+  /* ===== Карточка ===== */
+  .card{
+    width:min(680px,94vw);
+    background:rgba(255,255,255,.55);
+    -webkit-backdrop-filter:blur(20px) saturate(170%);
+    backdrop-filter:blur(20px) saturate(170%);
+    border:1px solid rgba(255,255,255,.8);
+    border-radius:26px;
+    box-shadow:0 24px 70px rgba(9,74,120,.25),0 2px 0 rgba(255,255,255,.9) inset;
+    padding:26px;
+    animation:fadeUp .9s .08s cubic-bezier(.22,1,.36,1) both;
+  }
+
+  @keyframes fadeUp{
+    from{opacity:0;transform:translateY(30px)}
+    to{opacity:1;transform:translateY(0)}
+  }
+
+  /* ===== Зона загрузки ===== */
+  .drop{
+    display:flex;flex-direction:column;align-items:center;gap:8px;
+    padding:38px 20px;border-radius:20px;cursor:pointer;
+    border:2px dashed rgba(27,143,212,.45);
+    background:linear-gradient(180deg,rgba(255,255,255,.7),rgba(214,239,255,.4));
+    transition:transform .4s cubic-bezier(.22,1,.36,1),
+               border-color .3s ease,background .3s ease,box-shadow .4s ease;
+    text-align:center;
+  }
+  .drop:hover{
+    border-color:#1b8fd4;transform:translateY(-4px);
+    box-shadow:0 18px 40px rgba(20,110,170,.2);
+    background:linear-gradient(180deg,rgba(255,255,255,.9),rgba(206,236,255,.6));
+  }
+  .drop.drag{
+    border-color:#0b7fc4;transform:scale(1.02);
+    background:linear-gradient(180deg,rgba(228,246,255,.98),rgba(178,224,255,.85));
+    box-shadow:0 0 0 6px rgba(27,143,212,.12),0 18px 40px rgba(20,110,170,.22);
+  }
+  .drop svg{width:44px;height:44px;stroke:#1b8fd4;transition:transform .4s cubic-bezier(.22,1,.36,1)}
+  .drop:hover svg{transform:translateY(-5px) scale(1.06)}
+  .drop-title{font-size:17px;font-weight:700;color:#0a4f7d}
+  .drop-sub{font-size:13px;color:#5b93b8}
+
+  /* ===== Панель ===== */
+  .panel{display:none}
+  .panel.show{display:block;animation:fadeUp .5s cubic-bezier(.22,1,.36,1) both}
+
+  .file-card{
+    display:flex;align-items:center;gap:14px;margin-top:20px;padding:14px 16px;
+    border-radius:16px;background:rgba(255,255,255,.72);
+    border:1px solid rgba(150,205,240,.6);
+    box-shadow:0 6px 18px rgba(20,110,170,.08);
+    animation:fadeUp .5s cubic-bezier(.22,1,.36,1) both;
+  }
+  .file-icon{
+    width:44px;height:44px;flex:0 0 44px;border-radius:13px;
+    display:grid;place-items:center;font-size:20px;
+    background:linear-gradient(135deg,#59c6f7,#1b8fd4);
+    box-shadow:0 6px 16px rgba(27,143,212,.4);
+  }
+  .file-meta{flex:1;min-width:0}
+  .file-name{
+    font-weight:700;font-size:15px;color:#0a4f7d;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .file-info{font-size:12.5px;color:#5b93b8;margin-top:2px}
+  .icon-btn{
+    width:32px;height:32px;border:none;border-radius:10px;cursor:pointer;
+    background:rgba(27,143,212,.1);color:#1b8fd4;font-size:15px;font-weight:700;
+    transition:all .25s ease;
+  }
+  .icon-btn:hover{background:rgba(27,143,212,.22);transform:rotate(90deg)}
+
+  .controls{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}
+  @media(max-width:520px){.controls{grid-template-columns:1fr}}
+  .field label{
+    display:block;font-size:12.5px;font-weight:700;color:#3d7ba3;
+    text-transform:uppercase;letter-spacing:.6px;margin-bottom:7px;
+  }
+  .field select,.field input[type=range]{width:100%}
+  select{
+    appearance:none;-webkit-appearance:none;
+    padding:12px 42px 12px 14px;border-radius:13px;font-size:15px;font-weight:600;
+    color:#0a4f7d;cursor:pointer;font-family:inherit;
+    border:1.5px solid rgba(120,195,240,.7);
+    background-color:rgba(255,255,255,.85);
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%231b8fd4' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat:no-repeat;background-position:right 14px center;
+    transition:border-color .3s ease,box-shadow .3s ease;
+  }
+  select:focus{outline:none;border-color:#1b8fd4;box-shadow:0 0 0 4px rgba(27,143,212,.15)}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;height:7px;border-radius:6px;
+    background:linear-gradient(90deg,#1b8fd4,#8fd4f7);outline:none;cursor:pointer;margin-top:12px;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:20px;height:20px;border-radius:50%;
+    background:#fff;border:3px solid #1b8fd4;cursor:pointer;
+    box-shadow:0 3px 10px rgba(27,143,212,.45);transition:transform .2s ease;
+  }
+  input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.18)}
+  input[type=range]::-moz-range-thumb{
+    width:20px;height:20px;border-radius:50%;background:#fff;
+    border:3px solid #1b8fd4;cursor:pointer;box-shadow:0 3px 10px rgba(27,143,212,.45);
+  }
+
+  /* ===== Кнопка ===== */
+  .convert{
+    width:100%;margin-top:20px;padding:16px;border:none;border-radius:16px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:10px;
+    font-family:inherit;font-size:16px;font-weight:800;letter-spacing:.3px;color:#fff;
+    background:linear-gradient(135deg,#37a9e6,#1268a8);
+    box-shadow:0 12px 30px rgba(27,143,212,.42),0 1px 0 rgba(255,255,255,.35) inset;
+    transition:transform .3s cubic-bezier(.22,1,.36,1),box-shadow .3s ease,filter .3s ease;
+  }
+  .convert:hover:not(:disabled){transform:translateY(-3px);box-shadow:0 20px 42px rgba(27,143,212,.5);filter:brightness(1.06)}
+  .convert:active:not(:disabled){transform:translateY(-1px) scale(.99)}
+  .convert:disabled{cursor:default;filter:saturate(.7) brightness(1.02);opacity:.85}
+  .spinner{
+    display:none;width:18px;height:18px;border-radius:50%;
+    border:2.5px solid rgba(255,255,255,.35);border-top-color:#fff;
+    animation:spin .7s linear infinite;
+  }
+  .convert.loading .spinner{display:block}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ===== Прогресс ===== */
+  .progress{
+    height:7px;border-radius:6px;margin-top:16px;overflow:hidden;
+    background:rgba(27,143,212,.13);opacity:0;transition:opacity .35s ease;
+  }
+  .progress.show{opacity:1}
+  .bar{
+    height:100%;width:0;border-radius:6px;
+    background:linear-gradient(90deg,#37a9e6,#7fd6ff,#37a9e6);
+    background-size:220% 100%;
+    transition:width .45s cubic-bezier(.22,1,.36,1);
+    animation:shimmer 1.6s linear infinite;
+  }
+  @keyframes shimmer{to{background-position:-220% 0}}
+
+  /* ===== Результат ===== */
+  .result{
+    margin-top:0;padding:0 18px;max-height:0;opacity:0;overflow:hidden;
+    border-radius:16px;
+    background:linear-gradient(135deg,rgba(222,246,255,.95),rgba(190,230,255,.8));
+    border:1px solid rgba(120,195,240,.6);
+    transition:max-height .5s cubic-bezier(.22,1,.36,1),opacity .4s ease,padding .4s ease,margin .4s ease;
+  }
+  .result.show{max-height:280px;opacity:1;padding:18px;margin-top:16px}
+  .result-title{font-size:14px;font-weight:700;color:#0a4f7d;display:flex;align-items:center;gap:8px}
+  .result-title::before{content:'✓';display:grid;place-items:center;width:20px;height:20px;
+    border-radius:50%;background:#1b8fd4;color:#fff;font-size:12px}
+  .result-sub{font-size:12.5px;color:#4d87ab;margin-top:6px}
+  .dl-btn{
+    display:inline-flex;align-items:center;gap:8px;margin-top:12px;padding:12px 22px;
+    border-radius:13px;text-decoration:none;font-weight:700;font-size:14.5px;color:#fff;
+    background:linear-gradient(135deg,#2fb37a,#1a8f5e);
+    box-shadow:0 10px 24px rgba(26,143,94,.35);
+    transition:transform .3s cubic-bezier(.22,1,.36,1),box-shadow .3s ease;
+  }
+  .dl-btn:hover{transform:translateY(-3px);box-shadow:0 16px 32px rgba(26,143,94,.45)}
+
+  .foot{
+    position:relative;z-index:2;max-width:760px;text-align:center;
+    font-size:12px;line-height:1.7;color:#3d7ba3;font-weight:500;
+    animation:fadeUp 1s .18s cubic-bezier(.22,1,.36,1) both;
+  }
+
+  /* ===== Тост ===== */
+  .toast{
+    position:fixed;top:24px;left:50%;transform:translate(-50%,-24px);
+    padding:13px 22px;border-radius:14px;z-index:50;
+    font-size:14px;font-weight:700;color:#fff;
+    background:linear-gradient(135deg,#e8615a,#c93b34);
+    box-shadow:0 14px 34px rgba(201,59,52,.4);
+    opacity:0;pointer-events:none;
+    transition:opacity .35s ease,transform .45s cubic-bezier(.22,1,.36,1);
+  }
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+<div class="glow"></div>
+
+<main class="wrap">
+  <header class="head">
+    <h1>Aqua<span>Convert</span></h1>
+    <p>Конвертируйте файлы в любой формат прямо в браузере</p>
+  </header>
+
+  <section class="card">
+    <label id="drop" class="drop" for="input">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      <div class="drop-title">Перетащите файл сюда</div>
+      <div class="drop-sub">или нажмите, чтобы выбрать</div>
+    </label>
+    <input type="file" id="input" hidden>
+
+    <div class="panel" id="panel">
+      <div class="file-card">
+        <div class="file-icon" id="fileIcon">📄</div>
+        <div class="file-meta">
+          <div class="file-name" id="fileName">—</div>
+          <div class="file-info" id="fileInfo">—</div>
+        </div>
+        <button class="icon-btn" id="clearBtn" title="Убрать файл">✕</button>
+      </div>
+
+      <div class="controls">
+        <div class="field">
+          <label for="format">Целевой формат</label>
+          <select id="format"></select>
+        </div>
+        <div class="field" id="qualityField">
+          <label for="quality">Качество: <span id="qVal">92%</span></label>
+          <input type="range" id="quality" min="10" max="100" value="92">
+        </div>
+      </div>
+
+      <button class="convert" id="convertBtn">
+        <span class="btn-text">Конвертировать</span>
+        <span class="spinner"></span>
+      </button>
+
+      <div class="progress" id="progress"><div class="bar" id="bar"></div></div>
+
+      <div class="result" id="result"></div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    Изображения: PNG · JPG · WEBP · GIF · BMP · SVG → PNG / JPG / WEBP<br>
+    Текст и данные: TXT · JSON · CSV · TSV · MD · HTML · XML · YAML → TXT / JSON / CSV / MD / HTML
+  </footer>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* =========================================================
+   1. 3D ФОН — МОРЕ
+   ========================================================= */
+(function () {
+  if (!window.THREE) return;
+  const canvas   = document.getElementById('bg');
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  const scene = new THREE.Scene();
+  scene.fog   = new THREE.FogExp2(0xd3ecff, 0.016);
+
+  const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 500);
+  camera.position.set(0, 8, 32);
+
+  /* --- свет --- */
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x3f9fd8, 1.15));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+  sun.position.set(-25, 40, 25);
+  scene.add(sun);
+
+  /* --- вода --- */
+  const SEG = 100;
+  const geo  = new THREE.PlaneGeometry(420, 420, SEG, SEG);
+  const base = Float32Array.from(geo.attributes.position.array);
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x74cdf6,
+    emissive: 0x1c6ea8,
+    emissiveIntensity: 0.35,
+    metalness: 0.45,
+    roughness: 0.28,
+    flatShading: true,
+    transparent: true,
+    opacity: 0.96
+  });
+
+  const water = new THREE.Mesh(geo, mat);
+  water.rotation.x = -Math.PI / 2;
+  water.position.y = -9;
+  scene.add(water);
+
+  /* --- брызги / частицы --- */
+  const P = 420;
+  const pGeo = new THREE.BufferGeometry();
+  const pArr = new Float32Array(P * 3);
+  for (let i = 0; i < P; i++) {
+    pArr[i * 3]     = (Math.random() - 0.5) * 140;
+    pArr[i * 3 + 1] = Math.random() * 34 - 4;
+    pArr[i * 3 + 2] = (Math.random() - 0.5) * 100;
+  }
+  pGeo.setAttribute('position', new THREE.BufferAttribute(pArr, 3));
+  const pMat = new THREE.PointsMaterial({
+    color: 0xffffff, size: 0.42, transparent: true,
+    opacity: 0.75, sizeAttenuation: true, depthWrite: false
+  });
+  const points = new THREE.Points(pGeo, pMat);
+  scene.add(points);
+
+  /* --- мышь --- */
+  const mouse = { x: 0, y: 0 };
+  window.addEventListener('mousemove', e => {
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = (e.clientY / window.innerHeight) * 2 - 1;
+  });
+
+  /* --- resize --- */
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  /* --- анимация --- */
+  const posAttr = geo.attributes.position;
+  const arr     = posAttr.array;
+  const clock   = new THREE.Clock();
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+
+    /* волны */
+    for (let i = 0; i < posAttr.count; i++) {
+      const ix = i * 3;
+      const x  = base[ix];
+      const y  = base[ix + 1];
+      arr[ix + 2] =
+        Math.sin(x * 0.045 + t * 1.10) * 1.9 +
+        Math.cos(y * 0.055 + t * 0.85) * 1.6 +
+        Math.sin((x + y) * 0.028 + t * 0.60) * 1.3;
+    }
+    posAttr.needsUpdate = true;
+
+    /* частицы вверх */
+    const pa = pGeo.attributes.position.array;
+    for (let i = 0; i < P; i++) {
+      pa[i * 3 + 1] += 0.035;
+      if (pa[i * 3 + 1] > 32) pa[i * 3 + 1] = -4;
+    }
+    pGeo.attributes.position.needsUpdate = true;
+
+    /* параллакс камеры */
+    camera.position.x += (mouse.x * 6 - camera.position.x) * 0.025;
+    camera.position.y += (8 - mouse.y * 2.5 - camera.position.y) * 0.025;
+    camera.lookAt(0, 1.5, -6);
+
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+
+
+/* =========================================================
+   2. КОНВЕРТЕР
+   ========================================================= */
+(function () {
+  const $ = id => document.getElementById(id);
+
+  const input       = $('input');
+  const drop        = $('drop');
+  const panel       = $('panel');
+  const formatSel   = $('format');
+  const qualityFld  = $('qualityField');
+  const quality     = $('quality');
+  const qVal        = $('qVal');
+  const convertBtn  = $('convertBtn');
+  const progress    = $('progress');
+  const bar         = $('bar');
+  const result      = $('result');
+  const fileNameEl  = $('fileName');
+  const fileInfoEl  = $('fileInfo');
+  const fileIconEl  = $('fileIcon');
+  const clearBtn    = $('clearBtn');
+  const toast       = $('toast');
+
+  /* ---------- форматы ---------- */
+  const IMAGE_EXT = ['png','jpg','jpeg','webp','gif','bmp','svg','avif','ico'];
+  const TEXT_EXT  = ['txt','json','csv','tsv','md','markdown','html','htm','xml','log','yml','yaml'];
+
+  const FORMATS = {
+    image: [
+      { v: 'png',  l: 'PNG' },
+      { v: 'jpeg', l: 'JPG / JPEG' },
+      { v: 'webp', l: 'WEBP' }
+    ],
+    text: [
+      { v: 'txt',  l: 'TXT — простой текст' },
+      { v: 'json', l: 'JSON — структура' },
+      { v: 'csv',  l: 'CSV — таблица' },
+      { v: 'md',   l: 'Markdown' },
+      { v: 'html', l: 'HTML' }
+    ]
+  };
+
+  const TEXT_MIME = {
+    txt: 'text/plain', json: 'application/json',
+    csv: 'text/csv', md: 'text/markdown', html: 'text/html'
+  };
+
+  const MIME_OF = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+    webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml'
+  };
+
+  /* ---------- состояние ---------- */
+  let currentFile = null;
+  let currentCat  = null;
+  let sourceExt   = '';
+  let busy        = false;
+  let lastUrl     = null;
+  let toastTimer  = null;
+
+  /* ---------- утилиты ---------- */
+  const getExt = name => (name.split('.').pop() || '').toLowerCase();
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' Б';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' КБ';
+    return (bytes / 1048576).toFixed(2) + ' МБ';
+  }
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 3200);
+  }
+
+  /* ---------- выбор файла ---------- */
+  function handleFile(file) {
+    if (!file) return;
+
+    const ext = getExt(file.name);
+    let cat = null;
+
+    if (IMAGE_EXT.includes(ext) || (file.type && file.type.startsWith('image/'))) {
+      cat = 'image';
+    } else if (
+      TEXT_EXT.includes(ext) ||
+      (file.type && (file.type.startsWith('text/') ||
+       file.type.includes('json') || file.type.includes('xml')))
+    ) {
+      cat = 'text';
+    }
+
+    if (!cat) {
+      showToast('Формат «.' + (ext || '?') + '» не поддерживается');
+      return;
+    }
+
+    currentFile = file;
+    currentCat  = cat;
+    sourceExt   = ext;
+
+    /* карточка файла */
+    fileNameEl.textContent = file.name;
+    fileInfoEl.textContent = (ext ? ext.toUpperCase() : 'FILE') + ' · ' + formatSize(file.size);
+    fileIconEl.textContent = cat === 'image' ? '🖼️' : '📄';
+
+    /* список форматов (исключаем исходный) */
+    formatSel.innerHTML = '';
+    FORMATS[cat].forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f.v;
+      opt.textContent = f.l;
+      if (f.v === ext || (ext === 'jpg' && f.v === 'jpeg')) opt.disabled = true;
+      formatSel.appendChild(opt);
+    });
+    const firstEnabled = [...formatSel.options].find(o => !o.disabled);
+    if (firstEnabled) formatSel.value = firstEnabled.value;
+
+    /* показ панели */
+    qualityFld.style.display = cat === 'image' ? '' : 'none';
+    result.classList.remove('show');
+    progress.classList.remove('show');
+    bar.style.width = '0%';
+    panel.classList.remove('show');
+    void panel.offsetWidth;
+    panel.classList.add('show');
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  /* ---------- drag & drop ---------- */
+  ['dragenter', 'dragover'].forEach(ev =>
+    drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('drag'); })
+  );
+  ['dragleave', 'drop'].forEach(ev =>
+    drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('drag'); })
+  );
+  drop.addEventListener('drop', e => {
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  });
+  window.addEventListener('dragover', e => e.preventDefault());
+  window.addEventListener('drop', e => e.preventDefault());
+
+  input.addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0];
+    if (f) handleFile(f);
+    input.value = '';
+  });
+
+  /* ---------- качество ---------- */
+  quality.addEventListener('input', () => { qVal.textContent = quality.value + '%'; });
+
+  /* ---------- сброс ---------- */
+  clearBtn.addEventListener('click', () => {
+    currentFile = null; currentCat = null; sourceExt = '';
+    panel.classList.remove('show');
+    result.classList.remove('show');
+    progress.classList.remove('show');
+    bar.style.width = '0%';
+    if (lastUrl) { URL.revokeObjectURL(lastUrl); lastUrl = null; }
+  });
+
+  /* =========================================================
+     КОНВЕРТАЦИЯ ИЗОБРАЖЕНИЙ
+     ========================================================= */
+  function convertImage(file, target, q) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+
+      img.onload = () => {
+        try {
+          let w = img.naturalWidth  || 1024;
+          let h = img.naturalHeight || 1024;
+
+          const MAX = 8000;
+          const scale = Math.min(1, MAX / Math.max(w, h));
+          w = Math.max(1, Math.round(w * scale));
+          h = Math.max(1, Math.round(h * scale));
+
+          const cv  = document.createElement('canvas');
+          cv.width  = w;
+          cv.height = h;
+          const ctx = cv.getContext('2d');
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+
+          if (target === 'jpeg') {          // JPEG не умеет прозрачность
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, w, h);
+          }
+          ctx.drawImage(img, 0, 0, w, h);
+
+          const mime = target === 'jpeg' ? 'image/jpeg' : 'image/' + target;
+
+          cv.toBlob(blob => {
+            URL.revokeObjectURL(url);
+            if (blob) resolve(blob);
+            else reject(new Error('Браузер не поддерживает конвертацию в ' + target.toUpperCase()));
+          }, mime, q);
+
+        } catch (err) {
+          URL.revokeObjectURL(url);
+          reject(err);
+        }
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Не удалось прочитать изображение'));
+      };
+
+      img.src = url;
+    });
+  }
+
+  /* =========================================================
+     КОНВЕРТАЦИЯ ТЕКСТА / ДАННЫХ
+     ========================================================= */
+  const readAsText = file => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload  = () => res(r.result);
+    r.onerror = () => rej(new Error('Не удалось прочитать файл'));
+    r.readAsText(file, 'UTF-8');
+  });
+
+  function detectDelim(text) {
+    const line = (text.split(/\r?\n/)[0] || '');
+    const c = (line.match(/,/g)  || []).length;
+    const s = (line.match(/;/g)  || []).length;
+    const t = (line.match(/\t/g) || []).length;
+    if (t >= c && t >= s && t > 0) return '\t';
+    if (s > c) return ';';
+    return ',';
+  }
+
+  function parseDelimited(text) {
+    const delim = detectDelim(text);
+    const rows = [];
+    let row = [], cur = '', q = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (q) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') { cur += '"'; i++; }
+          else q = false;
+        } else cur += ch;
+      } else if (ch === '"') {
+        q = true;
+      } else if (ch === delim) {
+        row.push(cur); cur = '';
+      } else if (ch === '\n') {
+        row.push(cur); rows.push(row); row = []; cur = '';
+      } else if (ch !== '\r') {
+        cur += ch;
+      }
+    }
+    if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+    while (rows.length && rows[rows.length - 1].every(c => c === '')) rows.pop();
+    return rows;
+  }
+
+  const csvCell = (v, d) => {
+    const s = v == null ? '' : String(v);
+    return (/["\n\r]/.test(s) || s.includes(d)) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+
+  function toCSV(data, delim = ',') {
+    let rows;
+    if (Array.isArray(data)) {
+      if (data.length && Array.isArray(data[0])) {
+        rows = data;
+      } else if (data.length && typeof data[0] === 'object' && data[0] !== null) {
+        const keys = [...new Set(data.flatMap(o => Object.keys(o || {})))];
+        rows = [keys, ...data.map(o => keys.map(k => (o && o[k] != null) ? o[k] : ''))];
+      } else {
+        rows = data.map(v => [v]);
+      }
+    } else if (data && typeof data === 'object') {
+      rows = [['key', 'value'], ...Object.entries(data).map(([k, v]) =>
+        [k, (v && typeof v === 'object') ? JSON.stringify(v) : v])];
+    } else {
+      rows = [[String(data)]];
+    }
+    return rows.map(r => r.map(c => csvCell(c, delim)).join(delim)).join('\n');
+  }
+
+  function toTXT(data) {
+    if (typeof data === 'string') return data;
+    if (Array.isArray(data)) {
+      if (data.length && Array.isArray(data[0])) return data.map(r => r.join('\t')).join('\n');
+      if (data.length && typeof data[0] === 'object') {
+        return data.map(o => Object.entries(o || {})
+          .map(([k, v]) => k + ': ' + ((v && typeof v === 'object') ? JSON.stringify(v) : v))
+          .join('\n')).join('\n\n');
+      }
+      return data.join('\n');
+    }
+    if (data && typeof data === 'object') {
+      return Object.entries(data)
+        .map(([k, v]) => k + ': ' + ((v && typeof v === 'object') ? JSON.stringify(v) : v))
+        .join('\n');
+    }
+    return String(data);
+  }
+
+  function toMD(data) {
+    const escPipe = v => String(v == null ? '' : v).replace(/\|/g, '\\|');
+
+    if (Array.isArray(data) && data.length && typeof data[0] === 'object' && !Array.isArray(data[0])) {
+      const keys = [...new Set(data.flatMap(o => Object.keys(o || {})))];
+      const head = '| ' + keys.join(' | ') + ' |';
+      const sep  = '| ' + keys.map(() => '---').join(' | ') + ' |';
+      const rows = data.map(o => '| ' + keys.map(k => escPipe(o && o[k])).join(' | ') + ' |');
+      return [head, sep, ...rows].join('\n');
+    }
+    if (Array.isArray(data) && data.length && Array.isArray(data[0])) {
+      const [h, ...rest] = data;
+      const head = '| ' + h.map(escPipe).join(' | ') + ' |';
+      const sep  = '| ' + h.map(() => '---').join(' | ') + ' |';
+      return [head, sep, ...rest.map(r => '| ' + r.map(escPipe).join(' | ') + ' |')].join('\n');
+    }
+    return '# Документ\n\n```\n' + toTXT(data) + '\n```\n';
+  }
+
+  const escHTML = s => String(s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  function toHTML(data) {
+    let table = null;
+    if (Array.isArray(data) && data.length && Array.isArray(data[0])) {
+      table = data;
+    } else if (Array.isArray(data) && data.length && typeof data[0] === 'object') {
+      const keys = [...new Set(data.flatMap(o => Object.keys(o || {})))];
+      table = [keys, ...data.map(o => keys.map(k => (o && o[k] != null) ? o[k] : ''))];
+    }
+
+    const style =
+      "body{font-family:system-ui,Segoe UI,sans-serif;background:#f2f9ff;color:#08324f;padding:28px;}" +
+      "table{border-collapse:collapse;width:100%;}" +
+      "th,td{border:1px solid #b9dcf3;padding:8px 12px;text-align:left;}" +
+      "th{background:#d9efff;}" +
+      "pre{background:#fff;padding:18px;border-radius:12px;overflow:auto;line-height:1.55;}";
+
+    let body;
+    if (table) {
+      body = '<table>\n' + table.map((row, i) =>
+        '  <tr>' + row.map(c => {
+          const tag = i === 0 ? 'th' : 'td';
+          return '<' + tag + '>' + escHTML(c) + '</' + tag + '>';
+        }).join('') + '</tr>'
+      ).join('\n') + '\n</table>';
+    } else {
+      body = '<pre>' + escHTML(toTXT(data)) + '</pre>';
+    }
+
+    return '<!DOCTYPE html>\n<html lang="ru">\n<head>\n<meta charset="UTF-8">\n' +
+           '<title>Конвертировано</title>\n<style>' + style + '</style>\n</head>\n<body>\n' +
+           body + '\n</body>\n</html>';
+  }
+
+  async function convertText(file, target) {
+    const ext  = getExt(file.name);
+    const text = await readAsText(file);
+
+    let data;
+    if (ext === 'json') {
+      try { data = JSON.parse(text); } catch (e) { data = text; }
+    } else if (ext === 'csv' || ext === 'tsv') {
+      data = parseDelimited(text);
+    } else {
+      data = text;
+    }
+
+    switch (target) {
+      case 'json':
+        return (typeof data === 'string')
+          ? JSON.stringify({ text: data }, null, 2)
+          : JSON.stringify(data, null, 2);
+      case 'csv':  return toCSV(data);
+      case 'md':   return toMD(data);
+      case 'html': return toHTML(data);
+      default:     return toTXT(data);
+    }
+  }
+
+  /* =========================================================
+     ЗАПУСК КОНВЕРТАЦИИ
+     ========================================================= */
+  function progressTo(pct, ms) {
+    bar.style.width = pct + '%';
+    return sleep(ms);
+  }
+
+  convertBtn.addEventListener('click', async () => {
+    if (!currentFile || busy) return;
+
+    const target = formatSel.value;
+    if (!target) { showToast('Выберите целевой формат'); return; }
+
+    busy = true;
+    convertBtn.disabled = true;
+    convertBtn.classList.add('loading');
+    convertBtn.querySelector('.btn-text').textContent = 'Конвертация…';
+    result.classList.remove('show');
+    progress.classList.add('show');
+    bar.style.width = '0%';
+
+    if (lastUrl) { URL.revokeObjectURL(lastUrl); lastUrl = null; }
+
+    const oldSize = currentFile.size;
+
+    try {
+      await progressTo(30, 260);
+
+      let blob;
+      if (currentCat === 'image') {
+        blob = await convertImage(currentFile, target, quality.value / 100);
+        await progressTo(85, 220);
+      } else {
+        const text = await convertText(currentFile, target);
+        blob = new Blob([text], { type: TEXT_MIME[target] + ';charset=utf-8' });
+        await progressTo(85, 220);
+      }
+
+      await progressTo(100, 380);
+      await sleep(200);
+
+      /* имя выходного файла */
+      const baseName = currentFile.name.replace(/\.[^.]+$/, '') || 'file';
+      const outExt   = target === 'jpeg' ? 'jpg' : target;
+      const outName  = baseName + '.' + outExt;
+
+      lastUrl = URL.createObjectURL(blob);
+
+      /* блок результата */
+      const diff = oldSize > 0 ? Math.round((1 - blob.size / oldSize) * 100) : 0;
+      const diffText = blob.size <= oldSize
+        ? 'меньше на ' + Math.abs(diff) + '%'
+        : 'больше на ' + Math.abs(diff) + '%';
+
+      result.innerHTML =
+        '<div class="result-title">Готово! Файл сконвертирован</div>' +
+        '<div class="result-sub">' + escHTML(outName) + ' · ' + formatSize(blob.size) +
+        ' (было ' + formatSize(oldSize) + ', ' + diffText + ')</div>' +
+        '<a class="dl-btn" href="' + lastUrl + '" download="' + escHTML(outName) + '">' +
+        '⬇ Скачать ' + escHTML(outExt.toUpperCase()) + '</a>';
+
+      result.classList.add('show');
+
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || 'Ошибка конвертации');
+      result.innerHTML =
+        '<div class="result-title" style="color:#c93b34">Не удалось конвертировать</div>' +
+        '<div class="result-sub">' + escHTML(err.message || 'Неизвестная ошибка') + '</div>';
+      result.classList.add('show');
+      bar.style.width = '0%';
+    } finally {
+      busy = false;
+      convertBtn.disabled = false;
+      convertBtn.classList.remove('loading');
+      convertBtn.querySelector('.btn-text').textContent = 'Конвертировать';
+      setTimeout(() => progress.classList.remove('show'), 900);
+    }
+  });
+
+})();
+</script>
+</body>
+</html>
